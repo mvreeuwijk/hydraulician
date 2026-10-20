@@ -1744,8 +1744,8 @@ SUITES.physics = async (B) => {
   // wave flumes run that way). With p = 0 at a part-full cell's centre the
   // contact line pushed the surface layer into motion that grew without
   // bound: 0.76 m/s in the top cells by 6 s at Medium, and 2.7% of the water
-  // gone in 20 s (mvreeuwijk#9). The ghost-fluid surface pressure (ghostP in
-  // FS_VEL) holds it. Every wet cell is read, because the motion lived only
+  // gone in 20 s (mvreeuwijk#9). The ghost-fluid surface pressure (pFace in
+  // FS_VEL, pFace) holds it. Every wet cell is read, because the motion lived only
   // in the top row, where a coarse probe grid would miss it.
   await B.goto(`http://localhost:${PORT}/?scene=beach`);
   const shore = await B.evaluate(`(() => {

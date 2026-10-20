@@ -121,7 +121,7 @@ void main(){
   //                      docs/numerics.md, "Where the stored pressure lives"
   //                      (rms 4e-5 m vs 1.2e-2 m = Δx/2 for the lower face).
   //                      It was the LOWER face until the ghost-fluid surface
-  //                      pressure (ghostP, mvreeuwijk#9) put p = 0 at the real
+  //                      pressure (pFace, mvreeuwijk#9) put p = 0 at the real
   //                      surface instead of a part-full cell's centre.
   //                      Every consumer — FS_DISP 6/7, FS_HGL, hydraulicGrade,
   //                      fieldStats, gauges, hover — follows this one rule.
@@ -234,58 +234,40 @@ float press(float f, float dv){
 // the pressure gradient: the face on top of a part-full cell had gravity and
 // no ∇p (it free-fell), neighbouring surface cells had no horizontal restoring
 // force, and a full cell beside a part-full one — a staircase beach — had a
-// spurious one. Still water started moving at the shoreline. Here a cell that
-// is not full takes the pressure of a linear profile through the full cell
-// below it (p_F at its centre) and p = 0 at the reconstructed surface, which
-// sits θ cells above that centre: θ = ½ + the summed fill of the part-full
-// cells above it (up to three; the interface is ~2 cells thick). k is the
-// cell's height above the full one. Over a solid (a film on a beach step) the
+// spurious one. Still water started moving at the shoreline.
+//
+// The face instead sees p = 0 at the reconstructed surface and the linear
+// profile through the DYNAMIC pressure of the cell below, so a falling blob
+// (p ≈ 0 under it) still falls: ghost = p_B (θ−1)/θ, θ the distance from the
+// centre of the cell below to the surface in cells, from the fills of the
+// cells below, here and above. Over a solid (a film on a beach step) the
 // profile is hydrostatic from the bed. Gibou et al. 2002; Hirt & Nichols 1981.
-// Returns -1e9 when the cell has no water column under it (spray, a jet in
-// the air, the void far above): the caller then keeps p = 0.
-float ghostP(ivec2 x, float fx){
-  float sumBelow = 0.0, pF = 0.0;
-  int k = 0; bool solidF = false;
-  for (int m = 1; m <= 3; m++) {
-    ivec2 d = x - ivec2(0, m);
-    if (d.y < 0) break;
-    if (SO(d) > 0.5) { solidF = true; k = m; break; }
-    float fd = TF(d).r;
-    if (fd >= 1.0) { pF = u_c2 * (fd - 1.0); k = m; break; }
-    sumBelow += clamp(fd, 0.0, 1.0);
-  }
-  if (k == 0) return -1e9;
-  // A surface needs AIR over it within three cells. Water stretched just
-  // below f = 1 in the interior (behind a paddle, in a trough) is not a
-  // surface: its p = 0 is the slot's tension limit, and a ghost there pushed
-  // the water apart into a field of holes. Full water above means a bubble.
-  float fill = sumBelow + clamp(fx, 0.0, 1.0);
-  bool air = fx <= 1e-3;
-  for (int m = 1; m <= 3; m++) {
-    if (air) break;
-    ivec2 a = x + ivec2(0, m);
-    if (a.y >= NXY.y || SO(a) > 0.5) break;
-    float fa = TF(a).r;
-    if (fa >= 1.0) return -1e9;
-    if (fa <= 1e-3) { air = true; break; }
-    if (k + m <= 3) fill += fa;
-  }
-  if (!air) return -1e9;
-  if (solidF) return abs(u_g) * (fill - float(k) + 0.5) * u_dx;
-  float th = 0.5 + fill;
-  return pF * (th - float(k)) / th;
-}
-// The pressure a face sees for cell x: the ghost for a part-full cell, the
-// EOS deep in the water and in plan view (no free surface). A FULL cell just
-// under the surface takes the larger of the two: its EOS starts at 0 at f = 1
-// while the ghost of a cell just short of full is ½gΔx, and a surface hovering
-// at a cell face (a channel's terraces) crossed that jump every few substeps —
-// m1 grew a standing train of 1 m bumps. With the max the two join at f = 1.
+//
+// Every input is continuous in f, because a first version built on switches
+// (is the cell below full, is there air within three cells) kicked the flow
+// each time a cell crossed one — holes behind a paddle, a train of standing
+// bumps on m1. So: only the cell directly below (its EOS pressure goes to 0
+// smoothly as it empties); the ghost is weighted by the air over the cell,
+// 1 − f_above, so interior water stretched below f = 1 keeps its EOS; and a
+// full cell takes the larger of its EOS and the ghost, so the two join at
+// f = 1. p is the cell's own EOS pressure.
 float pFace(ivec2 x, float fx, float p){
   if (u_g == 0.0 || SO(x) > 0.5) return p;
-  float gp = ghostP(x, min(fx, 1.0));
-  if (gp < -1e8) return p;
-  return fx >= 1.0 ? max(p, gp) : gp + p;
+  ivec2 b = x - ivec2(0, 1), a = x + ivec2(0, 1);
+  float fA = (a.y < NXY.y && SO(a) < 0.5) ? clamp(TF(a).r, 0.0, 1.0) : 0.0;
+  float air = 1.0 - fA;
+  if (air <= 0.0) return p;
+  float fX = clamp(fx, 0.0, 1.0), gp;
+  if (b.y < 0 || SO(b) > 0.5) {
+    gp = abs(u_g) * (fX + fA - 0.5) * u_dx;          // film on a solid
+  } else {
+    float fB = TF(b).r;
+    float pB = u_c2 * max(fB - 1.0, 0.0);
+    float th = max(clamp(fB, 0.0, 1.0) - 0.5 + fX + fA, 0.25);
+    gp = pB * (th - 1.0) / th;
+  }
+  float q = mix(p, gp + (fx < 1.0 ? p : 0.0), air);
+  return fx >= 1.0 ? max(p, q) : q;
 }
 
 // The void handling and the stress-free extension (the long comment above its
@@ -563,7 +545,7 @@ void main(){
   float dvS = (tSE.r - tS.r + t0.g  - tS.g) / dx;
   float pC = press(fC, dvC), pW = press(fW, dvW), pS = press(fS, dvS);
   // On faces that touch water the part-full cells take their ghost-fluid
-  // pressure (ghostP), blended in with the SAME weight gravity gets above, so
+  // pressure (pFace), blended in with the SAME weight gravity gets above, so
   // the two cancel exactly over still water at any fill; faces in the void
   // keep the plain EOS (p = 0), so spray still falls freely.
   float gwU = smoothstep(0.0, 0.05, fFu), gwW = smoothstep(0.0, 0.05, fFw);
