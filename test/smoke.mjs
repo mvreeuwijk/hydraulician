@@ -114,6 +114,16 @@ const MUTANTS = [
             + "y/d = 0.55-0.58: Smagorinsky's (C_s dx)^2 is ~100x too small to carry "
             + "the bed stress up the column. Six of the seven PROFILE checks fail" },
 
+  // -------- the ghost-fluid surface pressure (mvreeuwijk#9) --------
+  { id: "no-ghost-surface", suite: "physics", file: "/js/shaders.js",
+    why: "a part-full cell keeps p = 0 at its centre on every face, as before the fix",
+    find: "  if (u_g == 0.0 || SO(x) > 0.5) return p;",
+    replace: "  return p;",
+    kills: "PHYSICS still water beside a staircase beach stays still without the mixing length",
+    measured: "the gate reads 0.0087 m/s and 0.03% of the mass at Low with the fix; without it, "
+            + "measured at Medium, the top-layer speed grew from the shoreline to 0.76 m/s by 6 s "
+            + "and 2.7% of the water left in 20 s (mvreeuwijk#9)" },
+
   { id: "favre-reynolds", suite: "avg", file: "/js/shaders.js",
     why: "FS_ACC stores the plain velocity, so the mean is Reynolds, not Favre",
     find: "vec4 phi = vec4(f * uc, f * wc, f, U.b);",
@@ -1730,6 +1740,33 @@ SUITES.physics = async (B) => {
   ok("PHYSICS still water stays still", rest.maxSpeed < 0.35,
     "max speed " + rest.maxSpeed.toFixed(3) + " m/s");
 
+  // ...and still water against a STAIRCASE BEACH with no mixing length (the
+  // wave flumes run that way). With p = 0 at a part-full cell's centre the
+  // contact line pushed the surface layer into motion that grew without
+  // bound: 0.76 m/s in the top cells by 6 s at Medium, and 2.7% of the water
+  // gone in 20 s (mvreeuwijk#9). The ghost-fluid surface pressure (ghostP in
+  // FS_VEL) holds it. Every wet cell is read, because the motion lived only
+  // in the top row, where a coarse probe grid would miss it.
+  await B.goto(`http://localhost:${PORT}/?scene=beach`);
+  const shore = await B.evaluate(`(() => {
+    __low();
+    const S = APP.sim;
+    S.p.mixingLength = false; S.p.wave.on = 0; S.p.wave.amp = 0;
+    APP.SIM.resetWater();
+    const m0 = APP.SIM.boxForce(0, 0, S.W, S.H).mass;
+    while (S.t < 6) APP.tick(100);
+    const pts = [];
+    for (let j = 0; j < S.ny; j++) for (let i = 0; i < S.nx; i++) pts.push([(i + .5) * S.dx, (j + .5) * S.dx]);
+    let maxSpeed = 0, at = null;
+    APP.SIM.probeMany(pts).forEach((p) => {
+      if (p.f > 0.5 && p.solid < APP.SIM.MASK.SOLID_MIN && p.speed > maxSpeed) { maxSpeed = p.speed; at = [+(p.i * S.dx).toFixed(2), +(p.j * S.dx).toFixed(2)]; }
+    });
+    return { maxSpeed, at, m0, m1: APP.SIM.boxForce(0, 0, S.W, S.H).mass };
+  })()`);
+  ok("PHYSICS still water beside a staircase beach stays still without the mixing length",
+    shore.maxSpeed < 0.02 && near(shore.m1, shore.m0, 0.001 * shore.m0),
+    `max speed ${shore.maxSpeed.toFixed(4)} m/s at ${JSON.stringify(shore.at)}, mass ${shore.m0.toFixed(1)} → ${shore.m1.toFixed(1)}`);
+
   // One reference elevation for the stored pressure (docs/numerics.md, "Where
   // the stored pressure lives"): in a still tank the coloured piezometric-head
   // field (fieldStats(6) is the arithmetic FS_DISP mode 6 paints) and the
@@ -1762,7 +1799,7 @@ SUITES.physics = async (B) => {
   // z + P/g + |u|^2/2g; take the kinetic term out with the section's own
   // flux-weighted mean u (Mx/mdot) and what is left is the piezometric head,
   // which in this hydrostatic reach is the level, i.e. the drawn HGL
-  // (hydraulicGrade, j*dx + P/g) plus the S0*x of the tilted gravity. The
+  // (hydraulicGrade, (j+½)*dx + P/g) plus the S0*x of the tilted gravity. The
   // remainder is (alpha - 1) V^2/2g ~ 0.003 m; the Delta x/2 bias it exists to
   // catch is 0.0097 m at Low (MEASURED: new gap 0.10 dx (line) and 0.13 dx (box),
   // old centre-referenced z gave 0.60 and 0.62 dx; the bound is 0.3 dx).

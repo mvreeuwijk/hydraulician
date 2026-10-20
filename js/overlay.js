@@ -1706,9 +1706,9 @@ const OVERLAY = (() => {
       if (s.f > 0.5 && s.p > 0 && (!low || s.z < low.z)) low = s;
     }
     if (!low || !Number.isFinite(zf)) return null;
-    // The elevation the pressure belongs to is its cell's lower face (contract
-    // at the top of shaders.js): the cell the sample landed in, j·Δx.
-    const zc = Math.floor((low.z + low.nz * 0.75 * sim.dx) / sim.dx) * sim.dx;
+    // The elevation the pressure belongs to is its cell's centre (contract
+    // at the top of shaders.js): the cell the sample landed in, (j+½)·Δx.
+    const zc = (Math.floor((low.z + low.nz * 0.75 * sim.dx) / sim.dx) + 0.5) * sim.dx;
     const eta = zc + low.p / g;
     return eta > zf ? eta - zf : null;
   }

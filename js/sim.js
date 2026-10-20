@@ -1131,7 +1131,7 @@ const SIM = (() => {
     // U.b is KINEMATIC pressure p/rho, so the head is that over g -- it must
     // not be divided by density a second time (docs/averaging.md §4.1).
     return { i, j, fbar: f, ubar: u, wbar: w,
-             pbar: p, phead: p / g, zp: j * S.dx };
+             pbar: p, phead: p / g, zp: (j + 0.5) * S.dx };
   }
 
   // ------------------------------------------------------------------ step
@@ -1914,10 +1914,10 @@ const SIM = (() => {
    *  hydrostatic water that is simply the submergence below the local free
    *  surface, so it carries a unit vertical gradient everywhere wet and is not
    *  comparable between cells at different heights. The piezometric head is
-   *  h = z + p/ρg; add the elevation yourself, and use `zp` — j·Δx, the
-   *  cell's lower face, which is the elevation the stored pressure belongs to
-   *  (contract at the top of shaders.js) — not the cursor's or the cell
-   *  centre's z (see the gauge sampler in instruments.js). Renamed from `head` with rig format v2 — the old name kept
+   *  h = z + p/ρg; add the elevation yourself, and use `zp` — (j+½)·Δx, the
+   *  cell centre, which is the elevation the stored pressure belongs to
+   *  (contract at the top of shaders.js) — not the cursor's own z (see the
+   *  gauge sampler in instruments.js). Renamed from `head` with rig format v2 — the old name kept
    *  being read as piezometric, which it never was. */
   /** One readPixels serving every instrument: the (u, w, P) and (f) rects in
    *  the LIVE layout, from the live textures or — when `avg` is passed and a
@@ -2030,12 +2030,11 @@ const SIM = (() => {
         const k = j * nx + i;
         if (isSolid(S.mask[k], false)) continue;             // solid
         if (buf[k * 4 + 2] < 0.25) continue;                 // not water yet
-        // j * dx, NOT the cell centre. MEASURED: with (j + 0.5) * dx the
-        // whole line sat a uniform 0.00964 m above the free surface on m1
-        // at Low, where dx/2 is 0.00966 -- a clean half-cell bias, not
-        // weir physics. The stored pressure references the cell's lower
-        // face, so that is the elevation it belongs to.
-        h[i] = j * dx + buf[k * 4 + 3] / g;                  // z + p/rho g
+        // (j + 0.5) * dx: the stored pressure belongs to the cell centre
+        // (contract at the top of shaders.js). Before the ghost-fluid
+        // surface pressure it belonged to the lower face, and this line
+        // with (j + 0.5) * dx sat a clean half cell above the surface.
+        h[i] = (j + 0.5) * dx + buf[k * 4 + 3] / g;          // z + p/rho g
         break;                                               // lowest wet cell
       }
       if (h[i] !== h[i]) continue;                           // dry: hv stays NaN
@@ -2132,14 +2131,14 @@ const SIM = (() => {
       GLH.read(gl, S.avg.fld.read.fbo, i, j, 1, 1, S.pxBuf);
       const [u, w, f, p] = favre(S.pxBuf, 0);
       const g = gMag();
-      return { i, j, f, u, w, p, phead: p / g, zp: j * S.dx, speed: Math.hypot(u, w),
+      return { i, j, f, u, w, p, phead: p / g, zp: (j + 0.5) * S.dx, speed: Math.hypot(u, w),
                solid: S.mask[j * S.nx + i] };
     }
     GLH.read(gl, S.U.read.fbo, i, j, 1, 1, S.pxBuf);
     const u = S.pxBuf[0], w = S.pxBuf[1], p = S.pxBuf[2];
     GLH.read(gl, S.F.read.fbo, i, j, 1, 1, S.pxBuf);
     const g = gMag();
-    return { i, j, f: S.pxBuf[0], u, w, p, phead: p / g, zp: j * S.dx, speed: Math.hypot(u, w),
+    return { i, j, f: S.pxBuf[0], u, w, p, phead: p / g, zp: (j + 0.5) * S.dx, speed: Math.hypot(u, w),
              dye: S.pxBuf[1], solid: S.mask[j * S.nx + i] };
   }
 
@@ -2180,10 +2179,10 @@ const SIM = (() => {
         const i = cell[k][0], o = 4 * (i - r.i0), solid = S.mask[j * S.nx + i];
         if (useAvg) {
           const [u, w, f, p] = favre(A, o / 4);
-          out[k] = { i, j, f, u, w, p, phead: p / g, zp: j * S.dx, speed: Math.hypot(u, w), solid };
+          out[k] = { i, j, f, u, w, p, phead: p / g, zp: (j + 0.5) * S.dx, speed: Math.hypot(u, w), solid };
         } else {
           const u = A[o], w = A[o + 1], p = A[o + 2];
-          out[k] = { i, j, f: B ? B[o] : null, u, w, p, phead: p / g, zp: j * S.dx, speed: Math.hypot(u, w), solid };
+          out[k] = { i, j, f: B ? B[o] : null, u, w, p, phead: p / g, zp: (j + 0.5) * S.dx, speed: Math.hypot(u, w), solid };
         }
       });
     });
@@ -2227,9 +2226,9 @@ const SIM = (() => {
         if (!wet(i, j)) continue;
         const k = (j * S.nx + i) * 4;
         const u = U[k], w = U[k + 1], P = U[k + 2];
-        // z is the elevation the stored pressure belongs to: the cell's LOWER
-        // face (contract at the top of shaders.js), as FS_DISP and FS_HGL use.
-        const x = (i + 0.5) * S.dx, z = j * S.dx;
+        // z is the elevation the stored pressure belongs to: the cell CENTRE
+        // (contract at the top of shaders.js), as FS_DISP and FS_HGL use.
+        const x = (i + 0.5) * S.dx, z = (j + 0.5) * S.dx;
         let q = null;
         if (mode === 0 || mode === 1) q = P / g;
         else if (mode === 8) q = P;          // p in kPa = ρP/1000, ρ = 1000
@@ -2437,9 +2436,9 @@ const SIM = (() => {
       out.Fpx += RHO * f * P * nx * ds;
       out.Fpz += RHO * f * P * nz * ds;
       // P is bilinear over cell centres, each value belonging to its cell's
-      // LOWER face (contract at the top of shaders.js), so the pressure read
-      // at z belongs at z - dx/2: the elevation of the E term only.
-      out.E += RHO * f * un * (gAbs * ((z - 0.5 * S.dx) - tilt * x) + P + 0.5 * (u * u + wv * wv)) * ds;
+      // CENTRE (contract at the top of shaders.js), so the pressure read at
+      // z belongs at z.
+      out.E += RHO * f * un * (gAbs * (z - tilt * x) + P + 0.5 * (u * u + wv * wv)) * ds;
       out.wet += Math.min(f, 1) * ds;
       out.n++;
     }
@@ -2603,8 +2602,8 @@ const SIM = (() => {
         const wv = cen ? 0.5 * (U[a + 1] + U[b + 1])
                        : 0.25 * (U[a + 1] + U[b + 1] + U[k(i - 1, j + 1) + 1] + U[k(i, j + 1) + 1]);
         // P is the mean of cells (i-1, j) and (i, j), each referenced to its
-        // LOWER face j*dx (contract at the top of shaders.js): z = j*dx.
-        visit(key, n, u, wv, f, P, j * S.dx, i * S.dx);
+        // CENTRE (contract at the top of shaders.js): z = (j + 1/2)*dx.
+        visit(key, n, u, wv, f, P, (j + 0.5) * S.dx, i * S.dx);
       }
     }
     for (const [j, n, key] of [[jB, -1, "bed"], [jT, 1, "top"]]) {
@@ -2616,10 +2615,10 @@ const SIM = (() => {
         const P = 0.5 * (U[a + 2] + U[b + 2]);
         const u = cen ? 0.5 * (U[a] + U[b])
                       : 0.25 * (U[a] + U[b] + U[k(i + 1, j - 1)] + U[k(i + 1, j)]);
-        // P is the mean of rows j-1 and j, referenced to (j-1)*dx and j*dx
-        // (contract at the top of shaders.js): it belongs at (j - 1/2)*dx.
+        // P is the mean of rows j-1 and j, referenced to their centres
+        // (contract at the top of shaders.js): it belongs at the face, j*dx.
         // Only the elevation in E moves; Fpz and every other term keep P.
-        visit(key, n, u, wv, f, P, (j - 0.5) * S.dx, (i + 0.5) * S.dx);
+        visit(key, n, u, wv, f, P, j * S.dx, (i + 0.5) * S.dx);
       }
     }
   }

@@ -116,10 +116,13 @@ void main(){
   // Shared by the two simulation passes. Texture channel contract:
   //   u_U  RGBA32F   r = u at the WEST face of this cell
   //                  g = w at the SOUTH face of this cell
-  //                  b = p/ρ, the pressure at the cell's LOWER face, z = j·Δx
-  //                      (m²/s², diagnostic). NOT the centre: the elevation a
-  //                      head is built on is j·Δx. MEASURED still-water rest,
-  //                      docs/numerics.md, "Where the stored pressure lives" (rms 2e-4 m vs 1.2e-2 m = Δx/2).
+  //                  b = p/ρ, the pressure at the cell CENTRE, z = (j+½)·Δx
+  //                      (m²/s², diagnostic). MEASURED still-water rest,
+  //                      docs/numerics.md, "Where the stored pressure lives"
+  //                      (rms 4e-5 m vs 1.2e-2 m = Δx/2 for the lower face).
+  //                      It was the LOWER face until the ghost-fluid surface
+  //                      pressure (ghostP, mvreeuwijk#9) put p = 0 at the real
+  //                      surface instead of a part-full cell's centre.
   //                      Every consumer — FS_DISP 6/7, FS_HGL, hydraulicGrade,
   //                      fieldStats, gauges, hover — follows this one rule.
   //                  a = ∇·u at the cell centre (diagnostic)
@@ -224,6 +227,65 @@ float press(float f, float dv){
   if (u_g == 0.0) p += u_c2 * min(f - 1.0, 0.0) * smoothstep(0.3, 0.9, f);
   p -= u_bulk * u_c * u_dx * dv * smoothstep(0.90, 1.0, f);
   return (u_g == 0.0) ? p : max(p, 0.0);
+}
+
+// Ghost-fluid surface pressure (mvreeuwijk#9). Under gravity a part-full cell
+// has p = 0 whatever its fill, which puts the surface at the cell CENTRE for
+// the pressure gradient: the face on top of a part-full cell had gravity and
+// no ∇p (it free-fell), neighbouring surface cells had no horizontal restoring
+// force, and a full cell beside a part-full one — a staircase beach — had a
+// spurious one. Still water started moving at the shoreline. Here a cell that
+// is not full takes the pressure of a linear profile through the full cell
+// below it (p_F at its centre) and p = 0 at the reconstructed surface, which
+// sits θ cells above that centre: θ = ½ + the summed fill of the part-full
+// cells above it (up to three; the interface is ~2 cells thick). k is the
+// cell's height above the full one. Over a solid (a film on a beach step) the
+// profile is hydrostatic from the bed. Gibou et al. 2002; Hirt & Nichols 1981.
+// Returns -1e9 when the cell has no water column under it (spray, a jet in
+// the air, the void far above): the caller then keeps p = 0.
+float ghostP(ivec2 x, float fx){
+  float sumBelow = 0.0, pF = 0.0;
+  int k = 0; bool solidF = false;
+  for (int m = 1; m <= 3; m++) {
+    ivec2 d = x - ivec2(0, m);
+    if (d.y < 0) break;
+    if (SO(d) > 0.5) { solidF = true; k = m; break; }
+    float fd = TF(d).r;
+    if (fd >= 1.0) { pF = u_c2 * (fd - 1.0); k = m; break; }
+    sumBelow += clamp(fd, 0.0, 1.0);
+  }
+  if (k == 0) return -1e9;
+  // A surface needs AIR over it within three cells. Water stretched just
+  // below f = 1 in the interior (behind a paddle, in a trough) is not a
+  // surface: its p = 0 is the slot's tension limit, and a ghost there pushed
+  // the water apart into a field of holes. Full water above means a bubble.
+  float fill = sumBelow + clamp(fx, 0.0, 1.0);
+  bool air = fx <= 1e-3;
+  for (int m = 1; m <= 3; m++) {
+    if (air) break;
+    ivec2 a = x + ivec2(0, m);
+    if (a.y >= NXY.y || SO(a) > 0.5) break;
+    float fa = TF(a).r;
+    if (fa >= 1.0) return -1e9;
+    if (fa <= 1e-3) { air = true; break; }
+    if (k + m <= 3) fill += fa;
+  }
+  if (!air) return -1e9;
+  if (solidF) return abs(u_g) * (fill - float(k) + 0.5) * u_dx;
+  float th = 0.5 + fill;
+  return pF * (th - float(k)) / th;
+}
+// The pressure a face sees for cell x: the ghost for a part-full cell, the
+// EOS deep in the water and in plan view (no free surface). A FULL cell just
+// under the surface takes the larger of the two: its EOS starts at 0 at f = 1
+// while the ghost of a cell just short of full is ½gΔx, and a surface hovering
+// at a cell face (a channel's terraces) crossed that jump every few substeps —
+// m1 grew a standing train of 1 m bumps. With the max the two join at f = 1.
+float pFace(ivec2 x, float fx, float p){
+  if (u_g == 0.0 || SO(x) > 0.5) return p;
+  float gp = ghostP(x, min(fx, 1.0));
+  if (gp < -1e8) return p;
+  return fx >= 1.0 ? max(p, gp) : gp + p;
 }
 
 // The void handling and the stress-free extension (the long comment above its
@@ -499,9 +561,15 @@ void main(){
   float dvC = (tE.r  - t0.r + tN.g  - t0.g) / dx;
   float dvW = (t0.r  - tW.r + tNW.g - tW.g) / dx;
   float dvS = (tSE.r - tS.r + t0.g  - tS.g) / dx;
-  float pC = press(fC, dvC);
-  un -= dt * (pC - press(fW, dvW)) / dx;
-  wn -= dt * (pC - press(fS, dvS)) / dx;
+  float pC = press(fC, dvC), pW = press(fW, dvW), pS = press(fS, dvS);
+  // On faces that touch water the part-full cells take their ghost-fluid
+  // pressure (ghostP), blended in with the SAME weight gravity gets above, so
+  // the two cancel exactly over still water at any fill; faces in the void
+  // keep the plain EOS (p = 0), so spray still falls freely.
+  float gwU = smoothstep(0.0, 0.05, fFu), gwW = smoothstep(0.0, 0.05, fFw);
+  float qC = pFace(c, fC, pC);
+  un -= dt * mix(pC - pW, qC - pFace(ivec2(i-1, j), fW, pW), gwU) / dx;
+  wn -= dt * mix(pC - pS, qC - pFace(ivec2(i, j-1), fS, pS), gwW) / dx;
 
   // --- wind shear stress on the free surface (FF-1). A tangential stress τ
   //     on the surface is a force τ per unit area acting on the top layer, so
@@ -1089,7 +1157,7 @@ void main(){
   // (wet, h, 0, 0), so the refresh is an nx×1 readback and not two of the
   // whole field. The walk is the CPU one it replaced, cell for cell: the
   // lowest non-solid cell (a valve does not count) with f ≥ 0.25, and the
-  // pressure belongs to that cell's LOWER face, so z = j·Δx (the contract
+  // pressure belongs to that cell's CENTRE, so z = (j+½)·Δx (the contract
   // at the top of this file; measured in docs/numerics.md, "Where the stored
   // pressure lives").
   const FS_HGL = COMMON + `
@@ -1105,7 +1173,7 @@ void main(){
     // this does not go through SO() (the CPU walk it replaced counted the same).
     if (texelFetch(u_S, ivec2(i,j), 0).r > 0.75) continue;      // solid
     if (texelFetch(u_F, ivec2(i,j), 0).r < 0.25) continue;      // not water yet
-    o = vec4(1.0, float(j) * u_dx + texelFetch(u_U, ivec2(i,j), 0).b / u_gMag, 0.0, 0.0);
+    o = vec4(1.0, (float(j) + 0.5) * u_dx + texelFetch(u_U, ivec2(i,j), 0).b / u_gMag, 0.0, 0.0);
     return;
   }
   o = vec4(0.0);                                                // dry column
@@ -1485,12 +1553,11 @@ float fieldValue(vec2 g, vec2 pm, vec4 U, float f, float dep, out bool known){
     // (h sags), a chute toe (h bulges), gate contractions, jump rollers.
     // A tilted-gravity scene draws a flat bed and carries S₀ in gravity, so the
     // elevation term is z − S₀x there.
-    // The stored pressure belongs to the cell's LOWER face j·Δx (contract at
-    // the top of the file). blU is bilinear with each cell's value at its
-    // CENTRE, so the matching elevation is the sample height less Δx/2:
-    // linear in j, it interpolates j·Δx exactly. Using pm.y here put this
-    // field a half cell above the HGL line.
-    return (pm.y - 0.5 * u_dx) - u_tilt * pm.x + U.b / gEff();
+    // The stored pressure belongs to the cell's CENTRE (contract at the top
+    // of the file), and blU is bilinear between cell centres, so the sample
+    // height pm.y is the matching elevation (until the ghost-fluid surface
+    // pressure it was the lower face, and this read pm.y − Δx/2).
+    return pm.y - u_tilt * pm.x + U.b / gEff();
   } else if (u_mode == 7) {
     // Energy head H = z + p/ρg + |u|²/2g — the piezometric head plus the
     // velocity head, so it is the SAME picture as mode 6 with the kinetic
@@ -1500,7 +1567,7 @@ float fieldValue(vec2 g, vec2 pm, vec4 U, float f, float dep, out bool known){
     // No α here — that coefficient is what a depth-AVERAGED profile needs
     // because the point values differ; these are the point values.
     float g2 = gEff();
-    return (pm.y - 0.5 * u_dx) - u_tilt * pm.x + U.b / g2 + dot(U.rg, U.rg) / (2.0 * g2);
+    return pm.y - u_tilt * pm.x + U.b / g2 + dot(U.rg, U.rg) / (2.0 * g2);
   } else if (u_mode == 8) {
     // Pressure p in kPa: ρ·P with ρ = 1000 kg/m³ and P (U.b) the kinematic
     // pressure in m²/s², so kPa = P numerically. No division by g, so it

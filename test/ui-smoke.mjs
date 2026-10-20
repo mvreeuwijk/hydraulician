@@ -685,7 +685,7 @@ async function main() {
         const median = dev[dev.length >> 1];
         // The live line comes off a GPU column pass (FS_HGL); it must be the
         // CPU walk it replaced, column for column: lowest non-solid cell with
-        // f >= 0.25, z = j·dx + p/g. Read off the same state, no tick between.
+        // f >= 0.25, z = (j+½)·dx + p/g. Read off the same state, no tick between.
         const S = APP.sim, nx = S.nx, ny = S.ny, g = Math.abs(S.p.g) || 9.81;
         const gl = document.querySelector("canvas").getContext("webgl2");
         const U = new Float32Array(nx * ny * 4), F = new Float32Array(nx * ny * 4);
@@ -697,7 +697,7 @@ async function main() {
           for (let j = 1; j < ny - 1; j++) {
             const k = j * nx + i;
             if (S.mask[k] >= 192 || F[k * 4] < 0.25) continue;
-            ref = j * dx + U[k * 4 + 2] / g; break;
+            ref = (j + 0.5) * dx + U[k * 4 + 2] / g; break;
           }
           if (isFinite(ref) !== isFinite(h[i])) walkOff++;
           else if (isFinite(ref)) walkWorst = Math.max(walkWorst, Math.abs(ref - h[i]));
