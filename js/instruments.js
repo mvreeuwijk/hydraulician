@@ -72,8 +72,12 @@ function sampleGauges(A) {
     // switching a gauge's quantity later shows its whole history, and the
     // CSV always has the lot. The solver's p is kinematic (p/ρ, m²/s²);
     // ×ρ = 1000 kg/m³ stores it in Pa — the unit the CSV writes.
+    // d and η are the gauge's own depth (`dGauge`): the ±0.09 m window but not
+    // the overlay's per-frame running mean, which would filter the trace in
+    // time by however fast this machine draws (overlay.js analyse).
+    const dg = A.dGauge ? A.dGauge[i] : A.d[i];
     const s = { t: sim.t, h: z + pr.phead, H: z + pr.phead + pr.speed * pr.speed / (2 * g),
-                d: A.d[i], eta: A.bed[i] + A.d[i], speed: pr.speed,
+                d: dg, eta: A.bed[i] + dg, speed: pr.speed,
                 u: pr.u, w: pr.w, p: 1000 * pr.p, phead: pr.phead };
     gg.hist.push(s);
     if (gg.hist.length > CONFIG.histMax) gg.hist.splice(0, gg.hist.length - CONFIG.histMax);

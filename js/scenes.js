@@ -1560,18 +1560,20 @@ const SCENES = (() => {
       blurb: "The same water against a steep 1-in-1.4 beach, driven by a long wave. It does not spill: the front surges up the slope as a whole and runs back down.",
       tips: ["Iribarren ξ ≈ 8, far into the <b>surging</b> band (> 3.3) — no whitewater, just run-up and run-down.",
              "The reflected wave runs back out and meets the next one; that is why a steep beach makes a choppy tank.",
-             "Compare with the <b>spilling</b> flume — same depth, same stroke, only the slope and period differ.",
-             "This is why sea walls are built steep to reflect and beaches are gentle to dissipate."] }),
+             "Measured, the wall sends back about 0.8 of the wave at this period: put a gauge on the flat at x ≈ 7.2 m, a node, and it barely moves.",
+             "Compare with the <b>spilling</b> flume: the same depth, but a shorter wave on a slope seven times gentler.",
+             "That is the trade: a steep wall throws the wave back, a gentle beach spends it."] }),
 
     flume({
-      id: "wavedeep", name: "Wave flume · deep-water orbits", key: "h/L = 0.59",
+      id: "wavedeep", name: "Wave flume · deep-water orbits", key: "h/L = 0.34",
       W: 12, H: 1.5, lev: 1.00, bed: 0.26, xb: 8.2, slope: 0.297,
       // The closure stays ON here, at water's ν, for now (mvreeuwijk#2). Off
       // (at ν 1e-4) the train carries further — H 0.30 / 0.16 / 0.11 m at
       // x = 1 / 2 / 4 m against 0.20 / 0.06 / 0.04 — but this closed tank then
       // builds an unsteady mean current of 0.1–0.5 m/s at the orbit station,
-      // whose trails become streaks, and the short digit periods of B4 / WV-1
-      // (T ≤ 1.05 s) still die before x = 5.84 m. Turning it off needs the
+      // whose trails become streaks, and B4's short digit periods
+      // (T ≤ 1.05 s) still die before x = 5.84 m (B4 and WV-2's even digits
+      // read this flume; WV-1 moved to waveshallow with #76). Turning it off needs the
       // flume redesigned (an absorbing far end as WV-5's, a station nearer the
       // paddle), which is the follow-up.
       mixingLength: true, nu: 1e-5,
@@ -1582,15 +1584,22 @@ const SCENES = (() => {
       // 0.06 / 0.04) backfired: the same stroke in a
       // short tank with the beach only 3 m away builds a standing wave —
       // H reached 0.49 m at x = 1 — and the vertical profile stopped being
-      // monotonic, so the orbit decay fell from 250× to 16×. The orbits are
-      // read in the first few metres; the quiet water beyond is the price.
-      amp: 0.20, period: 0.9, particles: 1, plife: 9,
-      blurb: "A short, fast wave in water deeper than half its length. The orbits are circles at the surface that shrink to nothing well above the bed — the classic deep-water picture.",
+      // monotonic, so the orbit decay fell from 250× to 16×. Reverted.
+      //
+      // 1.2 s, not the 0.9 s this scene opened on until October 2026: measured
+      // on the current engine, the 0.9 s wave at 0.20 m is 0.31 m high at
+      // x = 0.6 m, steeper than a wave can stand, and gone by x = 1.5 m, so the
+      // column at 5.84 m traced nothing. At 1.2 s and 0.19 m (B4's first row)
+      // it arrives 0.10 m high, and kh = 2.1 is near enough to deep water that
+      // the orbits still shrink almost exponentially. Its height there is
+      // steady from ~10 s.
+      amp: 0.19, period: 1.2, particles: 1, plife: 9,
+      blurb: "A 2.2 m wave in 0.74 m of water, near enough to deep water that the orbits are circles at the surface and shrink almost to nothing at the bed.",
       tips: ["The bright trails ARE the orbits — a bare dot moving 30 mm is invisible, the path is the whole point. The red dot is where each tracer is right now.",
-             "Measured trail extents at this station: about 60 × 1 mm at the bed against 62 × 30 mm at the surface — the VERTICAL motion dies out some 40×.",
-             "So the near-bed trail is a flat horizontal line: water there slides back and forth and never rises.",
-             "The horizontal length stays ~60 mm all the way down because most of it is the return current, not orbit — a closed flume must send the water back somehow.",
-             "h/L = 0.59. Deep water is h/L > 0.5, where the bed stops being felt at all. Press <b>0</b> to zoom out."] }),
+             "Measured at this station, one loop is 56 mm tall 11 cm below the surface, 8 mm 10 cm above the bed and 1 mm at the bed: the VERTICAL motion dies towards the bed.",
+             "So the near-bed trail is a flat streak: water there slides back and forth and never rises.",
+             "The trails drift, forward near the surface and back along the bed. That is a slow circulation the decaying waves drive, not the orbit: read the height of ONE loop.",
+             "h/L = 0.34, kh = 2.1: deep water is h/L > 0.5. A shorter wave does not reach this column: set 0.9 s and watch it die within 1.5 m. Press <b>0</b> to zoom out."] }),
 
     flume({
       id: "waveshallow", name: "Wave flume · shallow-water waves", key: "h/L = 0.05",
