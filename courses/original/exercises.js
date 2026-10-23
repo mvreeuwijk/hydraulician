@@ -831,12 +831,15 @@ COURSES.exercises("original", [
   // short ones break at the paddle or die within a metre, ±15% frame to
   // frame). The shallow flume's first metres hold a clean progressive wave
   // from 0.9 s to 3.0 s, kh = 1.8 to 0.40, and a time lag between two Depth
-  // gauges reads its length within a few per cent. Its short waves die
+  // gauges reads its length within a few per cent from 1.5 s up (0.9-1.2 s
+  // are noisier, -8% to +12%). Its short waves die
   // within ~1.5 m, so they are timed nearer the paddle; each pair is closer
   // than a wavelength, so the next up-crossing is the same wave. 4 and 5 s
   // are out: a 7-9 m wave barely fits the 3.7 m flat, the beach returns part
   // of it, and runs whose strokes differed by 0.5% timed it 3% short to 10%
-  // long. One wave's lag scatters by up to 20%; the middle of three by ~6%.
+  // long (closure-on values). One wave's lag scatters by up to 20%; the
+  // middle of three by ~5% from 1.5 s up, but 10-20% at 0.9-1.2 s with the
+  // closure off (re-measured Oct 2026, see the folder's README).
   {
     id: "WV-1",
     title: "Dispersion, one period each",

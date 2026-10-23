@@ -1607,7 +1607,7 @@ const SCENES = (() => {
       amp: 0.10, period: 4.0, plife: 14, trail: 9,
       tracerX: 2.0, spinup: 30, view: { zoom: 1.9, cx: 2.0, cy: 0.44, vex: 2.2 },
       blurb: "A wave seven metres from crest to crest in 0.35 m of water. The whole depth moves together, the wave travels at √(gh), and it barely damps at all.",
-      tips: ["The trails are flat back-and-forth ellipses, the SAME size top to bottom — that is what 'shallow water' means.",
+      tips: ["The trails are flat back-and-forth ellipses, the SAME length top to bottom — that is what 'shallow water' means. Measured here, each loop is about 0.15 m long at every height, and 2 mm tall at the bed against 4 cm near the surface.",
              "Because every depth moves alike, one depth-averaged velocity describes the flow. That is the assumption every shallow-water model is built on.",
              "Contrast the <b>deep-water</b> flume, where the motion has died out entirely before you reach the bed.",
              "Long waves barely damp: measured H 0.059 m at 2 m and 0.057 m at 3 m along the flat bed, and still 0.046 m at 9 m, high up the beach.",
