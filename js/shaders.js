@@ -1601,16 +1601,11 @@ void main(){
     : mix(texelFetch(u_C,  ivec2(ci, 0), 0).y,
           texelFetch(u_C,  ivec2(cj, 0), 0).y, gx - float(ci));
 
-  // ---- background: a faint metric grid so scale is readable. A MID grey,
-  //      not near-black: on a projector the black level swallowed the void,
-  //      and with it the walls and the jet's outline. Neutral (R = B) so it
-  //      biases no red-vs-blue reading of a diverging ramp; light enough to
-  //      lift off the letterbox, dark enough that the overlays' pale lines
-  //      and labels still read on it.
-  vec3 bg = vec3(0.27);
+  // ---- background: a faint metric grid so scale is readable
+  vec3 bg = vec3(0.043, 0.055, 0.075);
   vec2 gr = abs(fract(pm / 1.0 - 0.5) - 0.5) / fwidth(pm / 1.0);
   float grid = 1.0 - min(min(gr.x, gr.y), 1.0);
-  bg += vec3(0.045) * grid;
+  bg += vec3(0.030, 0.038, 0.050) * grid;
 
   vec3 c = bg;
 
@@ -1642,10 +1637,11 @@ void main(){
   float band = (1.0 - smoothstep(0.0, 0.22, abs(fs - 0.55))) * smoothstep(0.10, 0.35, fs);
   c = mix(c, vec3(0.78, 0.92, 1.0), band * 0.50 * (1.0 - sol));
 
-  // ---- solids: darker than the void, with a pale rim ~2 screen pixels wide
-  //      on the solid side of every wall face (so it never covers water),
-  //      which is what makes a boundary read on a washed-out projector.
-  vec3 rock = vec3(0.11, 0.115, 0.13);
+  // ---- solids: a LIGHT grey, well clear of the near-black void (a dark-grey
+  //      rock vanished into a projector's black level), with a pale rim ~2
+  //      screen pixels wide on the solid side of every wall face (so it never
+  //      covers water).
+  vec3 rock = vec3(0.42, 0.43, 0.45);
   float hatch = 0.5 + 0.5 * sin((pm.x + pm.y) * 42.0);
   rock += vec3(0.030) * hatch;
   if (sol > 0.5) {
