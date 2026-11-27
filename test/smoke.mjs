@@ -3445,15 +3445,19 @@ SUITES.avg = async (B) => {
       gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, b);
       return { b, w, h };
     };
-    // Luminance centroid, in canvas rows. readPixels is y-up, so a LOW
-    // centroid means the bright band sits at the bottom of the view.
-    const centroid = (g) => {
+    // Centroid of the WATER, in canvas rows: each pixel weighted by how far
+    // it is from ref, the same view painted with no water in it. Raw
+    // luminance assumed a near-black canvas; a mid-grey one (for projectors)
+    // weighs the empty half nearly as much as the wet one. readPixels is
+    // y-up, so a LOW centroid means the water sits at the bottom of the view.
+    const centroid = (g, ref) => {
       let num = 0, den = 0;
       for (let y = 0; y < g.h; y++) {
         let row = 0;
         for (let x = 0; x < g.w; x++) {
           const k = (y * g.w + x) * 4;
-          row += g.b[k] + g.b[k+1] + g.b[k+2];
+          row += Math.abs(g.b[k] - ref.b[k]) + Math.abs(g.b[k+1] - ref.b[k+1])
+               + Math.abs(g.b[k+2] - ref.b[k+2]);
         }
         num += row * y; den += row;
       }
@@ -3475,9 +3479,12 @@ SUITES.avg = async (B) => {
       A[k+2] = j <  mid ? 1 : 0;                 // f-bar
       A[k+3] = 1.0;                              // P-bar, so the hue is not 0/0
     }
+    // The references first: both fields dry, so only the canvas is painted.
+    put(S.F.read.tex, new Float32Array(nx*ny*4)); put(S.avg.fld.read.tex, new Float32Array(nx*ny*4));
+    const dryLive = grab(false, 0, 0, 2), dryMean = grab(true, 0, 0, 2);
     put(S.F.read.tex, F); put(S.avg.fld.read.tex, A);
-    const cLive = centroid(grab(false, 0, 0, 2));
-    const cMean = centroid(grab(true,  0, 0, 2));
+    const cLive = centroid(grab(false, 0, 0, 2), dryLive);
+    const cMean = centroid(grab(true,  0, 0, 2), dryMean);
 
     // ---- 2. the VELOCITY, through the vorticity stencil. Both fields wet
     // everywhere, so only the stencil can move the colour. Live du/dz < 0
