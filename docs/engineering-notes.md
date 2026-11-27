@@ -1637,8 +1637,10 @@ Leer dye faces switch on with the first dye A released since the last reset
   on Speed is near-black purple): there the plume's edge gets a pale rim from
   the ink gradient, only where the ground's luminance is low.
 - **The free-surface line is drawn over the ink.** Ink right at a free
-  surface against the near-black canvas is black on black — a dyed nappe
-  vanished. FF-2's sheet stops 0.4 m under the reservoir surface for the same
+  surface against the then near-black canvas was black on black — a dyed
+  nappe vanished. (The canvas is mid-grey now, with a pale rim on every wall,
+  because a projector's black level swallowed the void; the line still earns
+  its place on the dark ramps.) FF-2's sheet stops 0.4 m under the reservoir surface for the same
   reason, so the nappe keeps a coloured skin.
 - **Limited faces once there is ink.** First-order upwind (numerical diffusivity
   ≈ u·Δx/2) spread a two-cell streak into grey within a couple of metres; with

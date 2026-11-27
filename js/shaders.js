@@ -1601,11 +1601,16 @@ void main(){
     : mix(texelFetch(u_C,  ivec2(ci, 0), 0).y,
           texelFetch(u_C,  ivec2(cj, 0), 0).y, gx - float(ci));
 
-  // ---- background: a faint metric grid so scale is readable
-  vec3 bg = vec3(0.043, 0.055, 0.075);
+  // ---- background: a faint metric grid so scale is readable. A MID grey,
+  //      not near-black: on a projector the black level swallowed the void,
+  //      and with it the walls and the jet's outline. Neutral (R = B) so it
+  //      biases no red-vs-blue reading of a diverging ramp; light enough to
+  //      lift off the letterbox, dark enough that the overlays' pale lines
+  //      and labels still read on it.
+  vec3 bg = vec3(0.27);
   vec2 gr = abs(fract(pm / 1.0 - 0.5) - 0.5) / fwidth(pm / 1.0);
   float grid = 1.0 - min(min(gr.x, gr.y), 1.0);
-  bg += vec3(0.030, 0.038, 0.050) * grid;
+  bg += vec3(0.045) * grid;
 
   vec3 c = bg;
 
@@ -1632,15 +1637,26 @@ void main(){
   c = dyeLayer(c, F, g, wet);
 
   // ---- free-surface line — drawn OVER the dye: ink in a nappe or a jet
-  //      against the near-black canvas is black on black, and the line is
+  //      against the dark canvas is all but invisible, and the line is
   //      what keeps the water's outline there.
   float band = (1.0 - smoothstep(0.0, 0.22, abs(fs - 0.55))) * smoothstep(0.10, 0.35, fs);
   c = mix(c, vec3(0.78, 0.92, 1.0), band * 0.50 * (1.0 - sol));
 
-  // ---- solids
-  vec3 rock = vec3(0.16, 0.17, 0.20);
+  // ---- solids: darker than the void, with a pale rim ~2 screen pixels wide
+  //      on the solid side of every wall face (so it never covers water),
+  //      which is what makes a boundary read on a washed-out projector.
+  vec3 rock = vec3(0.11, 0.115, 0.13);
   float hatch = 0.5 + 0.5 * sin((pm.x + pm.y) * 42.0);
   rock += vec3(0.030) * hatch;
+  if (sol > 0.5) {
+    float rw = 2.0 * px / u_dx;                  // rim width, grid units
+    float open = 0.0;
+    for (int k = 0; k < 8; k++) {
+      float an = float(k) * 0.785398;
+      open = max(open, 1.0 - solAt(g + rw * vec2(cos(an), sin(an))));
+    }
+    rock = mix(rock, vec3(0.86, 0.88, 0.92), open * 0.9);
+  }
   c = mix(c, rock, sol);
   c = mix(c, u_valve > 0.5 ? vec3(0.86, 0.33, 0.22) : vec3(0.35, 0.72, 0.45), valv * 0.85);
 
